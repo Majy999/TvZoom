@@ -1,0 +1,14 @@
+TvZoom
+======
+
+This project includes AdbLib:
+
+  https://github.com/cgutman/AdbLib
+  Copyright (c) 2013, Cameron Gutman
+  BSD-3-Clause license
+
+The full AdbLib license text is in third_party/AdbLib/LICENSE.
+
+The prebuilt APK in release/ is produced from this repository and signed with
+a local development key. The DEX file is not signed. These are not production
+builds.

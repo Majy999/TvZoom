@@ -1,0 +1,20 @@
+# Build output
+build/
+
+# Android Studio / Gradle
+.gradle/
+.idea/
+local.properties
+*.iml
+
+# Signing material and generated ADB keys
+*.jks
+*.keystore
+*.pem
+*.p12
+adbkey
+adbkey.pub
+
+# OS files
+.DS_Store
+Thumbs.db

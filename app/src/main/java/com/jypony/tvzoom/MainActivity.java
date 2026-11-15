@@ -20,6 +20,7 @@ public final class MainActivity extends Activity {
     private static final int[] PRESETS = {50, 57, 60, 70, 80, 90, 95, 100};
     private static final int BG = Color.rgb(16, 17, 20);
     private static final int PANEL = Color.rgb(28, 30, 36);
+    private static final int POSITION_PANEL = Color.rgb(22, 24, 29);
     private static final int TEXT = Color.rgb(238, 241, 247);
     private static final int MUTED = Color.rgb(151, 160, 176);
     private static final int ACCENT = Color.rgb(77, 163, 255);
@@ -29,24 +30,34 @@ public final class MainActivity extends Activity {
     private SeekBar seekBar;
     private LinearLayout presetRow;
     private int[] presetIds;
+    private TextView positionView;
     private Button applyButton;
     private Button resetButton;
+    private Button moveUpButton;
+    private Button moveDownButton;
+    private Button moveLeftButton;
+    private Button moveRightButton;
+    private Button centerButton;
     private Switch autoRestoreSwitch;
     private Switch adbKeepAliveSwitch;
     private boolean busy;
     private int selectedPercent;
+    private int selectedOffsetX;
+    private int selectedOffsetY;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SettingsStore.migrateFromCredentialStorage(this);
         selectedPercent = SettingsStore.getPercent(this);
+        selectedOffsetX = SettingsStore.getOffsetX(this);
+        selectedOffsetY = SettingsStore.getOffsetY(this);
         setContentView(buildUi());
         updateSelection();
         focusSelectedPreset();
-        showStatus(SettingsStore.getPercent(this) >= 100
+        showStatus(selectedPercent >= 100
                 ? "当前设置：全屏"
-                : "当前设置：" + SettingsStore.getPercent(this) + "%");
+                : "当前设置：" + selectedPercent + "% · " + formatOffset());
     }
 
     @Override
@@ -61,11 +72,17 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setFocusable(false);
+        scroll.setFocusableInTouchMode(false);
+        scroll.setSmoothScrollingEnabled(false);
+        scroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         scroll.setBackgroundColor(BG);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setFocusable(false);
+        root.setFocusableInTouchMode(false);
+        root.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         int pad = dp(48);
         root.setPadding(pad, dp(36), pad, dp(36));
         scroll.addView(root, new ScrollView.LayoutParams(
@@ -81,7 +98,7 @@ public final class MainActivity extends Activity {
         root.addView(title, matchWrap());
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("整幅画面等比缩小并居中，四周为黑边；不会裁剪内容。");
+        subtitle.setText("整幅画面等比缩小，默认居中；可用方向按钮移动位置，不会裁剪内容。");
         subtitle.setTextColor(MUTED);
         subtitle.setTextSize(16);
         subtitle.setGravity(Gravity.CENTER);
@@ -189,6 +206,8 @@ public final class MainActivity extends Activity {
         resetButton.setAllCaps(false);
         resetButton.setOnClickListener(v -> {
             selectedPercent = 100;
+            selectedOffsetX = 0;
+            selectedOffsetY = 0;
             updateSelection();
             applySelected();
         });
@@ -198,6 +217,87 @@ public final class MainActivity extends Activity {
         actions.addView(resetButton, resetLp);
 
         card.addView(actions, matchWrap());
+
+        LinearLayout positionCard = new LinearLayout(this);
+        positionCard.setOrientation(LinearLayout.VERTICAL);
+        positionCard.setGravity(Gravity.CENTER);
+        positionCard.setBackgroundColor(POSITION_PANEL);
+        positionCard.setPadding(dp(36), dp(20), dp(36), dp(22));
+        LinearLayout.LayoutParams positionCardParams = matchWrap();
+        positionCardParams.topMargin = dp(22);
+        card.addView(positionCard, positionCardParams);
+
+        TextView positionTitle = new TextView(this);
+        positionTitle.setText("画面位置");
+        positionTitle.setTextColor(TEXT);
+        positionTitle.setTextSize(18);
+        positionTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        positionTitle.setGravity(Gravity.CENTER);
+        positionCard.addView(positionTitle, matchWrap());
+
+        positionView = new TextView(this);
+        positionView.setTextColor(MUTED);
+        positionView.setTextSize(14);
+        positionView.setGravity(Gravity.CENTER);
+        positionView.setPadding(0, dp(4), 0, dp(12));
+        positionCard.addView(positionView, matchWrap());
+
+        moveUpButton = createPositionButton("↑ 上移");
+        moveDownButton = createPositionButton("↓ 下移");
+        moveLeftButton = createPositionButton("← 左移");
+        moveRightButton = createPositionButton("→ 右移");
+        centerButton = createPositionButton("居中");
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER);
+        addPositionSpacer(topRow);
+        topRow.addView(moveUpButton, positionButtonParams());
+        addPositionSpacer(topRow);
+        positionCard.addView(topRow, matchWrap());
+
+        LinearLayout middleRow = new LinearLayout(this);
+        middleRow.setOrientation(LinearLayout.HORIZONTAL);
+        middleRow.setGravity(Gravity.CENTER);
+        middleRow.setPadding(0, dp(8), 0, dp(8));
+        middleRow.addView(moveLeftButton, positionButtonParams());
+        middleRow.addView(centerButton, positionButtonParams());
+        middleRow.addView(moveRightButton, positionButtonParams());
+        positionCard.addView(middleRow, matchWrap());
+
+        LinearLayout bottomRow = new LinearLayout(this);
+        bottomRow.setOrientation(LinearLayout.HORIZONTAL);
+        bottomRow.setGravity(Gravity.CENTER);
+        addPositionSpacer(bottomRow);
+        bottomRow.addView(moveDownButton, positionButtonParams());
+        addPositionSpacer(bottomRow);
+        positionCard.addView(bottomRow, matchWrap());
+
+        final int moveStep = dp(24);
+        moveUpButton.setOnClickListener(v -> applyMove(0, -moveStep));
+        moveDownButton.setOnClickListener(v -> applyMove(0, moveStep));
+        moveLeftButton.setOnClickListener(v -> applyMove(-moveStep, 0));
+        moveRightButton.setOnClickListener(v -> applyMove(moveStep, 0));
+        centerButton.setOnClickListener(v -> centerSelected());
+
+        moveUpButton.setNextFocusLeftId(moveUpButton.getId());
+        moveUpButton.setNextFocusRightId(moveUpButton.getId());
+        moveUpButton.setNextFocusDownId(centerButton.getId());
+        moveLeftButton.setNextFocusUpId(moveUpButton.getId());
+        moveLeftButton.setNextFocusDownId(moveDownButton.getId());
+        moveLeftButton.setNextFocusLeftId(moveLeftButton.getId());
+        moveLeftButton.setNextFocusRightId(centerButton.getId());
+        centerButton.setNextFocusUpId(moveUpButton.getId());
+        centerButton.setNextFocusDownId(moveDownButton.getId());
+        centerButton.setNextFocusLeftId(moveLeftButton.getId());
+        centerButton.setNextFocusRightId(moveRightButton.getId());
+        moveRightButton.setNextFocusUpId(moveUpButton.getId());
+        moveRightButton.setNextFocusDownId(moveDownButton.getId());
+        moveRightButton.setNextFocusLeftId(centerButton.getId());
+        moveRightButton.setNextFocusRightId(moveRightButton.getId());
+        moveDownButton.setNextFocusUpId(centerButton.getId());
+        moveDownButton.setNextFocusLeftId(moveDownButton.getId());
+        moveDownButton.setNextFocusRightId(moveDownButton.getId());
 
         for (int i = 0; i < presetRow.getChildCount(); i++) {
             presetRow.getChildAt(i).setNextFocusDownId(applyButton.getId());
@@ -247,11 +347,13 @@ public final class MainActivity extends Activity {
         adbSwitchParams.leftMargin = dp(8);
         card.addView(adbKeepAliveSwitch, adbSwitchParams);
 
-        applyButton.setNextFocusDownId(autoRestoreSwitch.getId());
-        resetButton.setNextFocusDownId(autoRestoreSwitch.getId());
-        autoRestoreSwitch.setNextFocusUpId(applyButton.getId());
+        applyButton.setNextFocusDownId(moveUpButton.getId());
+        resetButton.setNextFocusDownId(moveUpButton.getId());
+        moveDownButton.setNextFocusDownId(autoRestoreSwitch.getId());
         autoRestoreSwitch.setNextFocusDownId(adbKeepAliveSwitch.getId());
         adbKeepAliveSwitch.setNextFocusUpId(autoRestoreSwitch.getId());
+        moveUpButton.setNextFocusUpId(applyButton.getId());
+        autoRestoreSwitch.setNextFocusUpId(moveDownButton.getId());
 
         statusView = new TextView(this);
         statusView.setTextColor(MUTED);
@@ -288,6 +390,7 @@ public final class MainActivity extends Activity {
             applyButton.setNextFocusUpId(presetIds[selectedIndex]);
             resetButton.setNextFocusUpId(presetIds[selectedIndex]);
         }
+        updatePositionUi();
     }
 
     private void focusSelectedPreset() {
@@ -343,34 +446,149 @@ public final class MainActivity extends Activity {
         return states;
     }
 
+    private Button createPositionButton(String text) {
+        Button button = new Button(this);
+        button.setId(View.generateViewId());
+        button.setText(text);
+        button.setTextSize(17);
+        button.setTextColor(TEXT);
+        button.setAllCaps(false);
+        button.setBackground(presetBackground());
+        return button;
+    }
+
+    private void addPositionSpacer(LinearLayout row) {
+        View spacer = new View(this);
+        row.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+    }
+
+    private LinearLayout.LayoutParams positionButtonParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                0, dp(54), 1f);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        return params;
+    }
+
+    private void updatePositionUi() {
+        if (positionView == null) {
+            return;
+        }
+        if (selectedPercent >= 100) {
+            positionView.setText("全屏时没有偏移空间");
+        } else {
+            positionView.setText(formatOffset());
+        }
+    }
+
+    private String formatOffset() {
+        return "X " + signed(selectedOffsetX) + " px · Y "
+                + signed(selectedOffsetY) + " px";
+    }
+
+    private static String signed(int value) {
+        return value > 0 ? "+" + value : String.valueOf(value);
+    }
+
+    private void centerSelected() {
+        if (busy) {
+            return;
+        }
+        if (selectedPercent >= 100) {
+            showStatus("全屏时画面已经居中");
+            return;
+        }
+        applyPosition(0, 0, "正在居中 …", "已居中");
+    }
+
     private void applySelected() {
+        applySelected(selectedPercent, selectedOffsetX, selectedOffsetY, true);
+    }
+
+    private void applyMove(int dx, int dy) {
+        if (busy) {
+            return;
+        }
+        if (selectedPercent >= 100) {
+            showStatus("全屏时没有可移动空间，请先选择较小比例");
+            return;
+        }
+        applyPosition(
+                selectedOffsetX + dx,
+                selectedOffsetY + dy,
+                "正在移动画面 …",
+                "已移动");
+    }
+
+    private void applyPosition(final int offsetX, final int offsetY,
+                               final String pendingMessage,
+                               final String successMessage) {
+        final int percent = selectedPercent;
+        final View focused = getCurrentFocus();
+        setBusy(true);
+        showStatus(pendingMessage);
+        new Thread(() -> {
+            ZoomController.Result result = ZoomController.apply(
+                    this, percent, offsetX, offsetY);
+            runOnUiThread(() -> {
+                setBusy(false);
+                if (result.success) {
+                    selectedOffsetX = result.offsetX;
+                    selectedOffsetY = result.offsetY;
+                    SettingsStore.setOffsets(this, selectedOffsetX, selectedOffsetY);
+                    updatePositionUi();
+                    showStatus(successMessage + " · " + formatOffset());
+                } else {
+                    showStatus("调整失败：" + result.message);
+                }
+                if (focused != null && focused.isShown() && focused.isEnabled()) {
+                    focused.requestFocus();
+                }
+            });
+        }, "tvzoom-position").start();
+    }
+
+    private void applySelected(final int percent, final int offsetX,
+                               final int offsetY, final boolean focusPreset) {
         if (busy) {
             return;
         }
         setBusy(true);
-        showStatus("正在应用 " + selectedPercent + "% …");
-        final int percent = selectedPercent;
+        showStatus("正在应用 " + percent + "% …");
         new Thread(() -> {
-            ZoomController.Result result = ZoomController.apply(this, percent);
+            ZoomController.Result result = ZoomController.apply(
+                    this, percent, offsetX, offsetY);
             runOnUiThread(() -> {
                 setBusy(false);
                 if (result.success) {
+                    selectedPercent = percent;
+                    selectedOffsetX = percent >= 100 ? 0 : result.offsetX;
+                    selectedOffsetY = percent >= 100 ? 0 : result.offsetY;
                     SettingsStore.setPercent(this, percent);
+                    if (percent >= 100) {
+                        SettingsStore.clearOffsets(this);
+                    } else {
+                        SettingsStore.setOffsets(this, selectedOffsetX, selectedOffsetY);
+                    }
                     SettingsStore.resetRetry(this);
                     if (SettingsStore.isAutoRestore(this)) {
                         BootReceiver.scheduleWatchdog(this);
                     }
+                    updateSelection();
                     if (percent >= 100) {
                         showStatus("已恢复全屏");
                     } else if (SettingsStore.isAutoRestore(this)) {
-                        showStatus("已应用 " + percent + "%，重启后会自动恢复");
+                        showStatus("已应用 " + percent + "% · "
+                                + formatOffset() + "，重启后会自动恢复");
                     } else {
-                        showStatus("已应用 " + percent + "%，开机自动恢复已关闭");
+                        showStatus("已应用 " + percent + "% · "
+                                + formatOffset() + "，开机自动恢复已关闭");
                     }
                 } else {
                     showStatus("应用失败：" + result.message);
                 }
-                focusSelectedPreset();
+                if (focusPreset) {
+                    focusSelectedPreset();
+                }
             });
         }, "tvzoom-apply-now").start();
     }
@@ -380,6 +598,11 @@ public final class MainActivity extends Activity {
         applyButton.setEnabled(!value);
         resetButton.setEnabled(!value);
         seekBar.setEnabled(!value);
+        moveUpButton.setEnabled(!value);
+        moveDownButton.setEnabled(!value);
+        moveLeftButton.setEnabled(!value);
+        moveRightButton.setEnabled(!value);
+        centerButton.setEnabled(!value);
         for (int i = 0; i < presetRow.getChildCount(); i++) {
             presetRow.getChildAt(i).setEnabled(!value);
         }

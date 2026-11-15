@@ -33,14 +33,22 @@ final class ZoomController {
     static final class Result {
         final boolean success;
         final String message;
+        final int offsetX;
+        final int offsetY;
 
         Result(boolean success, String message) {
+            this(success, message, 0, 0);
+        }
+
+        Result(boolean success, String message, int offsetX, int offsetY) {
             this.success = success;
             this.message = message;
+            this.offsetX = offsetX;
+            this.offsetY = offsetY;
         }
     }
 
-    static Result apply(Context context, int percent) {
+    static Result apply(Context context, int percent, int offsetX, int offsetY) {
         AdbConnection connection = null;
         try {
             AdbCrypto crypto = loadOrCreateCrypto(context);
@@ -52,7 +60,7 @@ final class ZoomController {
 
             String action = percent >= 100
                     ? "reset"
-                    : "set " + percent;
+                    : "set " + percent + " " + offsetX + " " + offsetY;
             String command = "CLASSPATH=" + DEX
                     + " app_process /system/bin tvzoom.TvZoom " + action
                     + "; echo __TVZOOM_EXIT:$?";
@@ -69,7 +77,8 @@ final class ZoomController {
             String text = output.toString().trim();
             boolean success = text.contains("__TVZOOM_EXIT:0")
                     && (text.contains("displayRect=") || text.contains("reset to"));
-            return new Result(success, text);
+            int[] offset = parseOffset(text);
+            return new Result(success, text, offset[0], offset[1]);
         } catch (Throwable t) {
             return new Result(false, t.toString());
         } finally {
@@ -79,6 +88,29 @@ final class ZoomController {
                 } catch (IOException ignored) {
                 }
             }
+        }
+    }
+
+    private static int[] parseOffset(String text) {
+        String marker = "offset=";
+        int start = text.lastIndexOf(marker);
+        if (start < 0) {
+            return new int[] {0, 0};
+        }
+        start += marker.length();
+        int end = text.indexOf('\n', start);
+        String value = end < 0 ? text.substring(start) : text.substring(start, end);
+        String[] parts = value.trim().split(",");
+        if (parts.length != 2) {
+            return new int[] {0, 0};
+        }
+        try {
+            return new int[] {
+                    Integer.parseInt(parts[0].trim()),
+                    Integer.parseInt(parts[1].trim())
+            };
+        } catch (NumberFormatException ignored) {
+            return new int[] {0, 0};
         }
     }
 

@@ -1,6 +1,6 @@
 # 电视缩放（TvZoom）
 
-一款面向 Android TV / 小米电视的画面缩放工具。它把整幅系统画面等比缩小并居中，四周显示黑边，**不裁剪画面内容**。适用于儿童模式、长辈模式或某些应用界面过大、边缘内容被电视 overscan 遮挡的场景。
+一款面向 Android TV / 小米电视的画面缩放工具。它把整幅系统画面等比缩小，默认居中并可在黑边范围内自由移动，四周显示黑边，**不裁剪画面内容**。适用于儿童模式、长辈模式或某些应用界面过大、边缘内容被电视 overscan 遮挡的场景。
 
 > 这是一个需要 ADB 授权、依赖 Android 隐藏 API 的本地工具，不是应用商店中的通用电视应用。请先阅读“兼容性”和“安全说明”。
 
@@ -8,7 +8,7 @@
 
 - 50%–100% 连续缩放，滑杆可精细调节。
 - 快捷预设：50 / 57 / 60 / 70 / 80 / 90 / 95 / 100%。
-- 整屏等比缩放，画面居中，四周黑边，不裁剪。
+- 整屏等比缩放，默认居中，也可用方向按钮移动位置；四周黑边，不裁剪。
 - “恢复全屏”一键回到 100%。
 - 可选“开机自动恢复上次缩放”。
 - 可选“保持 ADB 调试开启”，缓解小米电视重启后关闭 ADB 的问题。
@@ -56,7 +56,7 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
         └──────────────────────────────┘
 ```
 
-源矩形始终是完整的物理屏幕，目标矩形按比例缩小并居中。因此画面内容不会被裁掉，空出来的区域由系统合成黑边。
+源矩形始终是完整的物理屏幕，目标矩形按比例缩小并默认居中。因此画面内容不会被裁掉，空出来的区域由系统合成黑边。
 
 例如 57%：
 
@@ -67,6 +67,15 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
 上边距 = (1080 - 615) / 2 = 232
 ```
 
+还可以在当前黑边范围内移动画面。偏移量会限制在“不越过物理屏幕边缘”的范围内，所以移动只会改变四周黑边的分布，不会裁剪内容：
+
+```text
+最大水平偏移 = (屏幕宽 - 缩放后宽度) / 2
+最大垂直偏移 = (屏幕高 - 缩放后高度) / 2
+```
+
+例如 57% 时，X 方向最大可移动 ±413 px，Y 方向最大可移动 ±232 px。超出范围的偏移会被辅助程序自动夹到边界内。
+
 ### App 工作链路
 
 1. `MainActivity` 提供缩放比例、预设、恢复全屏和开关。
@@ -75,10 +84,10 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
 
    ```sh
    CLASSPATH=/data/local/tmp/tvzoom.dex \
-     app_process /system/bin tvzoom.TvZoom set 57
+     app_process /system/bin tvzoom.TvZoom set 57 0 0
    ```
 
-4. `tvzoom.TvZoom` 调用 `SurfaceControl.Transaction#setDisplayProjection()`，把完整屏幕映射到居中的缩放矩形。
+4. `tvzoom.TvZoom` 调用 `SurfaceControl.Transaction#setDisplayProjection()`，把完整屏幕映射到缩放并偏移后的矩形。
 5. 恢复全屏执行 `tvzoom.TvZoom reset`，把源和目标都设回完整物理屏幕。
 
 `tvzoom.dex` 是随 App 一起安装的辅助程序，必须放在 `/data/local/tmp/tvzoom.dex`。它不是普通应用代码，而是由 `app_process` 以 shell 权限启动的 Java 程序。
@@ -110,9 +119,14 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
 | 系统 density | 320 |
 | 连接方式 | 网络 ADB（端口 5555） |
 
-此前版本在以上设备上验证过：57% 缩放后画面居中、四周黑边、内容不裁剪；重启后可恢复上次比例和 ADB。该结论仅代表该设备与系统版本，不代表其他型号一定能复现。
+已在以上设备完成 1.1.1 真机回归：
 
-> 验证状态：本次整理时对 `TvZoom.java` 做了反射改造，使其能用标准 `android.jar` 编译，并重新构建了 APK/DEX。发布产物已通过 APK 签名校验和 SHA-256 校验，但整理后的版本尚未再次连接电视做回归实测。首次使用前请确认你能通过 ADB 恢复全屏。
+- 50%–100% 滑杆和 50 / 57 / 60 / 70 / 80 / 90 / 95 / 100% 预设均可应用，57% 预设可正常选中和执行。
+- 遥控器方向键可在预设、应用按钮、方向移动按钮和两个开关之间移动，焦点顺序正常。
+- 57% 偏移 `X -48 / Y -48` 时，SurfaceFlinger 目标矩形为 `Rect(365, 184, 1459, 799)`，源矩形仍为完整 `1920 × 1080`，确认没有裁剪。
+- 重启电视且**不打开 App**，约 20 秒后 ADB 恢复，缩放自动重放为上一次的 `57% / X -48 / Y -48`。
+
+> 验证状态：1.1.1 修复了 ADB 保活任务覆盖开机缩放重试任务的问题，并重新构建 APK/DEX。发布产物已通过 APK 签名校验和 SHA-256 校验。首次使用前请确认你能通过 ADB 恢复全屏。
 
 ### 其他机型
 
@@ -243,9 +257,10 @@ adb shell dumpsys package com.jypony.tvzoom | grep WRITE_SECURE_SETTINGS
 2. 使用左右方向键在预设之间移动，按确认直接应用。
 3. 使用上下方向键在滑杆、预设、按钮和开关之间移动。
 4. 用滑杆选择 50%–100% 的任意比例，再按“应用缩放”。
-5. 需要回到正常画面时，按“恢复全屏”，或选择 100% 预设。
-6. 保持“开机自动恢复上次缩放”开启，重启后会自动重放上次比例。
-7. 保持“保持 ADB 调试开启”开启，App 会在开机后尝试恢复 ADB。
+5. 在“画面位置”区域按“上移 / 下移 / 左移 / 右移”调整位置；每按一次移动 24 dp，按“居中”恢复默认位置。这里的“上移”表示画面向屏幕上方移动，Y 偏移会减小。
+6. 需要回到正常画面时，按“恢复全屏”，或选择 100% 预设。
+7. 保持“开机自动恢复上次缩放”开启，重启后会自动重放上次比例和位置。
+8. 保持“保持 ADB 调试开启”开启，App 会在开机后尝试恢复 ADB。
 
 首次点击“应用缩放”时，电视可能再次弹出 ADB 授权。请选择“始终允许”，否则本机 ADB 连接会失败。
 
@@ -290,6 +305,12 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
 adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.TvZoom scale 1280 720 320 180'
 adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.TvZoom rect 320 180 1600 900'
 adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.TvZoom reset'
+```
+
+`set` 可以带位置偏移，格式为 `set PERCENT OFFSET_X OFFSET_Y`：
+
+```sh
+adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.TvZoom set 57 200 -100'
 ```
 
 `crop` 是早期诊断命令，会改变源矩形并裁掉部分画面。**App 界面不会调用 `crop`**；日常缩放请使用 `set` / `fit` / `scale` / `rect`。
@@ -354,6 +375,35 @@ adb shell 'CLASSPATH=/data/local/tmp/tvzoom.dex app_process /system/bin tvzoom.T
 - App 未被系统“自启动管理”或省电策略限制。
 
 即使全部满足，系统重置与 App 恢复之间仍可能有短暂空窗，无法做到零间隔。
+
+### 重启后缩放没有自动恢复
+
+先确认“开机自动恢复上次缩放”开关为开启，并查看日志：
+
+```sh
+adb logcat -d -b all | grep -E 'TvZoomJob|TvZoomBoot|TvZoomAdb'
+```
+
+正常应出现类似记录：
+
+```text
+start job=7301 percent=57 offset=-48,-48
+applied 57% job=7301
+```
+
+如果只有 `start adb job` 而没有 `applied`，检查：
+
+- `/data/local/tmp/tvzoom.dex` 是否仍存在。部分系统会清理该目录，重新执行 `adb push` 即可；
+- App 是否被小米系统的自启动管理、后台限制或省电策略拦截；
+- 电视是否处于儿童模式或受管模式，导致开机广播没有送达。
+
+缩放任务、ADB 保活任务和重试任务使用不同 Job ID，不会互相覆盖。验证实际投影矩形：
+
+```sh
+adb shell dumpsys SurfaceFlinger | sed -n '/Display 0 (physical/,/Composition RenderSurface State/p'
+```
+
+查看 `framebufferSpace` 或 `displaySpace` 的 `content=Rect(...)`，它表示画面在物理屏幕上的实际目标矩形。`screencap` 截图可能只包含应用合成层，不能用于判断物理黑边。
 
 ### 画面边缘仍有干扰内容
 

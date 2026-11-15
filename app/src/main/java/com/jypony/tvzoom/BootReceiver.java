@@ -15,6 +15,8 @@ public final class BootReceiver extends BroadcastReceiver {
     private static final int ADB_BOOT_JOB_ID = 7310;
     private static final int ADB_WATCHDOG_JOB_ID = 7311;
     private static final int ADB_RETRY_JOB_BASE = 7320;
+    private static final int SCALE_RETRY_JOB_BASE = 7330;
+    private static final int SCALE_RETRY_JOB_COUNT = 5;
     private static final long[] ADB_BOOT_DELAYS_MS = {5000L, 20000L, 60000L, 180000L};
     private static final long BOOT_DELAY_MS = 10000L;
     private static final long WATCHDOG_PERIOD_MS = 15L * 60L * 1000L;
@@ -70,6 +72,40 @@ public final class BootReceiver extends BroadcastReceiver {
                 .setBackoffCriteria(30000L, JobInfo.BACKOFF_POLICY_LINEAR);
         int result = scheduler.schedule(builder.build());
         Log.i(TAG, "schedule boot job delay=" + delayMs + " result=" + result);
+    }
+
+    static void scheduleScaleRetry(Context context, int sourceJobId, long delayMs) {
+        if (!SettingsStore.isAutoRestore(context)) {
+            return;
+        }
+        int jobId = scaleRetryJobId(sourceJobId);
+        if (jobId < 0) {
+            return;
+        }
+        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+        if (scheduler == null) {
+            return;
+        }
+        JobInfo.Builder builder = new JobInfo.Builder(
+                jobId, new ComponentName(context, ApplyJobService.class))
+                .setMinimumLatency(delayMs)
+                .setOverrideDeadline(delayMs + 120000L)
+                .setPersisted(true)
+                .setBackoffCriteria(30000L, JobInfo.BACKOFF_POLICY_LINEAR);
+        int result = scheduler.schedule(builder.build());
+        Log.i(TAG, "schedule scale retry source=" + sourceJobId
+                + " job=" + jobId + " delay=" + delayMs + " result=" + result);
+    }
+
+    private static int scaleRetryJobId(int sourceJobId) {
+        if (sourceJobId == ADB_WATCHDOG_JOB_ID) {
+            return SCALE_RETRY_JOB_BASE + SCALE_RETRY_JOB_COUNT - 1;
+        }
+        if (sourceJobId >= ADB_RETRY_JOB_BASE
+                && sourceJobId < ADB_RETRY_JOB_BASE + SCALE_RETRY_JOB_COUNT - 1) {
+            return SCALE_RETRY_JOB_BASE + sourceJobId - ADB_RETRY_JOB_BASE;
+        }
+        return -1;
     }
 
     static void scheduleWatchdog(Context context) {
@@ -145,6 +181,9 @@ public final class BootReceiver extends BroadcastReceiver {
         if (scheduler != null) {
             scheduler.cancel(BOOT_JOB_ID);
             scheduler.cancel(WATCHDOG_JOB_ID);
+            for (int i = 0; i < SCALE_RETRY_JOB_COUNT; i++) {
+                scheduler.cancel(SCALE_RETRY_JOB_BASE + i);
+            }
         }
     }
 

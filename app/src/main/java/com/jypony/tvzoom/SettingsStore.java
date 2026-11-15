@@ -7,6 +7,8 @@ import android.os.UserManager;
 final class SettingsStore {
     private static final String PREFS = "tvzoom";
     private static final String KEY_PERCENT = "percent";
+    private static final String KEY_OFFSET_X = "offset_x";
+    private static final String KEY_OFFSET_Y = "offset_y";
     private static final String KEY_RETRY = "retry";
     private static final String KEY_AUTO_RESTORE = "auto_restore";
     private static final String KEY_ADB_KEEP_ALIVE = "adb_keep_alive";
@@ -34,6 +36,8 @@ final class SettingsStore {
         }
         target.edit()
                 .putInt(KEY_PERCENT, legacy.getInt(KEY_PERCENT, 100))
+                .putInt(KEY_OFFSET_X, legacy.getInt(KEY_OFFSET_X, 0))
+                .putInt(KEY_OFFSET_Y, legacy.getInt(KEY_OFFSET_Y, 0))
                 .putInt(KEY_RETRY, legacy.getInt(KEY_RETRY, 0))
                 .putBoolean(KEY_AUTO_RESTORE,
                         legacy.getBoolean(KEY_AUTO_RESTORE, true))
@@ -48,6 +52,25 @@ final class SettingsStore {
 
     static void setPercent(Context context, int percent) {
         prefs(context).edit().putInt(KEY_PERCENT, percent).commit();
+    }
+
+    static int getOffsetX(Context context) {
+        return prefs(context).getInt(KEY_OFFSET_X, 0);
+    }
+
+    static int getOffsetY(Context context) {
+        return prefs(context).getInt(KEY_OFFSET_Y, 0);
+    }
+
+    static void setOffsets(Context context, int offsetX, int offsetY) {
+        prefs(context).edit()
+                .putInt(KEY_OFFSET_X, offsetX)
+                .putInt(KEY_OFFSET_Y, offsetY)
+                .commit();
+    }
+
+    static void clearOffsets(Context context) {
+        setOffsets(context, 0, 0);
     }
 
     static boolean isAutoRestore(Context context) {

@@ -23,10 +23,12 @@ public final class TvZoom {
                     break;
                 case "set": {
                     int percent = args.length > 1 ? Integer.parseInt(args[1]) : 90;
+                    int offsetX = args.length > 2 ? Integer.parseInt(args[2]) : 0;
+                    int offsetY = args.length > 3 ? Integer.parseInt(args[3]) : 0;
                     if (percent < 10 || percent > 100) {
                         throw new IllegalArgumentException("percent must be 10..100");
                     }
-                    setPercent(percent);
+                    setPercent(percent, offsetX, offsetY);
                     break;
                 }
                 case "fit": {
@@ -99,17 +101,23 @@ public final class TvZoom {
         System.out.println("token=" + getDisplayToken(display));
     }
 
-    private static void setPercent(int percent) throws Exception {
+    private static void setPercent(int percent, int offsetX, int offsetY)
+            throws Exception {
         Display display = getDisplay();
         int[] physical = getPhysicalSize(display);
         int w = physical[0] * percent / 100;
         int h = physical[1] * percent / 100;
-        int left = (physical[0] - w) / 2;
-        int top = (physical[1] - h) / 2;
+        int maxOffsetX = (physical[0] - w) / 2;
+        int maxOffsetY = (physical[1] - h) / 2;
+        offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, offsetX));
+        offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, offsetY));
+        int left = (physical[0] - w) / 2 + offsetX;
+        int top = (physical[1] - h) / 2 + offsetY;
         apply(display, new Rect(0, 0, physical[0], physical[1]),
                 new Rect(left, top, left + w, top + h));
         System.out.println("set " + percent + "% -> displayRect="
-                + new Rect(left, top, left + w, top + h));
+                + new Rect(left, top, left + w, top + h)
+                + " offset=" + offsetX + "," + offsetY);
     }
 
     private static void fit(int w, int h) throws Exception {
@@ -289,7 +297,7 @@ public final class TvZoom {
 
     private static void usage() {
         System.out.println("usage: TvZoom status");
-        System.out.println("       TvZoom set PERCENT");
+        System.out.println("       TvZoom set PERCENT [OFFSET_X OFFSET_Y]");
         System.out.println("       TvZoom fit WIDTH HEIGHT");
         System.out.println("       TvZoom scale WIDTH HEIGHT [X Y]");
         System.out.println("       TvZoom rect LEFT TOP RIGHT BOTTOM");
